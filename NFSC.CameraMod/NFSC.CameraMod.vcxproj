@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <ItemGroup Label="ProjectConfigurations">
+        <ProjectConfiguration Include="Debug|Win32">
+            <Configuration>Debug</Configuration>
+            <Platform>Win32</Platform>
+        </ProjectConfiguration>
+        <ProjectConfiguration Include="Release|Win32">
+            <Configuration>Release</Configuration>
+            <Platform>Win32</Platform>
+        </ProjectConfiguration>
+    </ItemGroup>
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
+    <PropertyGroup Label="Globals">
+        <ProjectGuid>{cfe443ac-2306-414a-9605-7e7ebbded37a}</ProjectGuid>
+        <Keyword>Win32Proj</Keyword>
+        <RootNamespace>NFSC.CameraMod</RootNamespace>
+        <ProjectName>NFSC.CameraMod</ProjectName>
+        <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+        <PlatformToolset>v143</PlatformToolset>
+        <ConfigurationType>DynamicLibrary</ConfigurationType>
+        <CharacterSet>Unicode</CharacterSet>
+    </PropertyGroup>
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
+    <PropertyGroup>
+        <TargetExt>.asi</TargetExt>
+        <OutDir>$(SolutionDir)scripts</OutDir>
+        <AssemblyName>NFSC.CameraMod</AssemblyName>
+    </PropertyGroup>
+
+    <ItemDefinitionGroup>
+        <PostBuildEvent>
+            <Command>
+                XCOPY /Y /R "$(SolutionDir)NFSC.CameraMod.ini" "$(OutDir)" &amp;
+                XCOPY /Y /R "$(TargetDir)*" "d:\Games\NFSC PS3\Scripts"
+            </Command>
+        </PostBuildEvent>
+    </ItemDefinitionGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+        <UseDebugLibraries>true</UseDebugLibraries>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+        <UseDebugLibraries>false</UseDebugLibraries>
+        <WholeProgramOptimization>true</WholeProgramOptimization>
+    </PropertyGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+        <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform"/>
+    </ImportGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+        <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform"/>
+    </ImportGroup>
+    <PropertyGroup Label="UserMacros"/>
+
+    <ItemDefinitionGroup>
+        <ClCompile>
+            <LanguageStandard>stdcpp17</LanguageStandard>
+            <AdditionalIncludeDirectories>
+                ..\includes;includes\minhook;
+                $(DXSDK_DIR)Include;%(AdditionalIncludeDirectories)
+            </AdditionalIncludeDirectories>
+        </ClCompile>
+        <Link>
+            <SubSystem>Windows</SubSystem>
+            <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+            <AdditionalDependencies>d3d9.lib;d3dx9.lib;ws2_32.lib;crypt32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+        </Link>
+    </ItemDefinitionGroup>
+
+    <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+        <ClCompile>
+            <PrecompiledHeader>NotUsing</PrecompiledHeader>
+            <WarningLevel>Level3</WarningLevel>
+            <Optimization>Disabled</Optimization>
+            <PreprocessorDefinitions>GAME_CB;WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        </ClCompile>
+        <Link>
+            <GenerateDebugInformation>true</GenerateDebugInformation>
+        </Link>
+    </ItemDefinitionGroup>
+    <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+        <ClCompile>
+            <PrecompiledHeader>NotUsing</PrecompiledHeader>
+            <WarningLevel>Level4</WarningLevel>
+            <Optimization>MaxSpeed</Optimization>
+            <PreprocessorDefinitions>GAME_CB;WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        </ClCompile>
+    </ItemDefinitionGroup>
+
+    <ItemGroup>
+        <ClInclude Include="..\includes\minhook\include\MinHook.h"/>
+        <ClInclude Include="..\includes\minhook\src\buffer.h"/>
+        <ClInclude Include="..\includes\minhook\src\hde\hde32.h"/>
+        <ClInclude Include="..\includes\minhook\src\hde\hde64.h"/>
+        <ClInclude Include="..\includes\minhook\src\hde\pstdint.h"/>
+        <ClInclude Include="..\includes\minhook\src\hde\table32.h"/>
+        <ClInclude Include="..\includes\minhook\src\hde\table64.h"/>
+        <ClInclude Include="..\includes\minhook\src\trampoline.h"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ClCompile Include="..\includes\minhook\src\buffer.c"/>
+        <ClCompile Include="..\includes\minhook\src\hde\hde32.c"/>
+        <ClCompile Include="..\includes\minhook\src\hde\hde64.c"/>
+        <ClCompile Include="..\includes\minhook\src\hook.c"/>
+        <ClCompile Include="..\includes\minhook\src\trampoline.c"/>
+        <ClCompile Include="dllmain.cpp"/>
+    </ItemGroup>
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
+</Project>
