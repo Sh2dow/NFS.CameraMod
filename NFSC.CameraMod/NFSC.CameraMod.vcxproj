@@ -97,6 +97,7 @@
         <ClInclude Include="..\includes\minhook\src\hde\table64.h"/>
         <ClInclude Include="..\includes\minhook\src\trampoline.h"/>
         <ClInclude Include="Carbon.h" />
+        <ClInclude Include="Log.h" />
         <ClInclude Include="MostWanted.h" />
     </ItemGroup>
     <ItemGroup>

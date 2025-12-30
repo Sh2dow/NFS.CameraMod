@@ -43,4 +43,5 @@ namespace Game
 	constexpr uintptr_t CameraWrapperAddr = 0x00492D80;   // your wrapper start
 	constexpr uintptr_t CreateLookAtAddr  = 0x0071B430;
 	constexpr uintptr_t DisableTiltsAddr  = 0x00492353;
+	constexpr uintptr_t CameraAnchor_Update  = 0x0047968C;
 }
