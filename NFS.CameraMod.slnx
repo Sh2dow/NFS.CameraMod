@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug_MW" />
+    <BuildType Name="Release_MW" />
+    <BuildType Name="Debug_CB" />
+    <BuildType Name="Release_CB" />
+    <Platform Name="Win32" />
+  </Configurations>
+
+  <Project Path="NFS.CameraMod/NFS.CameraMod.vcxproj">
+    <Build Solution="DebugMW|*"   Project="Debug_MW|*" />
+    <Build Solution="ReleaseMW|*" Project="Release_MW|*" />
+    <Build Solution="DebugCB|*"   Project="Debug_CB|*" />
+    <Build Solution="ReleaseCB|*" Project="Release_CB|*" />
+  </Project>
+</Solution>

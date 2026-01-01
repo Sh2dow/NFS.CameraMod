@@ -31,7 +31,7 @@ namespace asi_log
             vsnprintf_s(buffer, sizeof(buffer), fmt, args);
             va_end(args);
 
-            std::string message = std::string("[NextGenGraphics.TextureLoader] ") + buffer;
+            std::string message = std::string("[NFS.NFS.CameraMod] ") + buffer;
 
             {
                 std::lock_guard<std::mutex> lock(mutex_);
