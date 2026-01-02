@@ -42,7 +42,6 @@ struct CameraState
     float yawBias;
     float rollBias;
 
-    float gNorm;
     float horizonLock;
 
     // NEW (UG2)
@@ -54,11 +53,7 @@ struct CameraState
 
     bool timeValid;
     bool viewYawValid;
-    float prevViewYaw;
-    bool wasFirstPerson;
 
-    int upSign; // +1 or -1
-    bool upSignValid;
 } g_cam;
 
 static void init_camera(Vec3* eye)
@@ -66,7 +61,6 @@ static void init_camera(Vec3* eye)
     g_cam.inited = true;
 
     g_cam.prevFrom = *eye;
-    g_cam.prevViewYaw = 0.0f;
 
     // Seed velocity direction safely (no impulses)
     g_cam.velDirFilt = v3(0.0f, 0.0f, 1.0f); // MW forward (XZ)
@@ -76,17 +70,12 @@ static void init_camera(Vec3* eye)
     g_cam.speedFilt = 0.0f;
     g_cam.yawRateFilt = 0.0f;
     g_cam.rollBias = 0.0f;
-    g_cam.gNorm = 0.0f;
     g_cam.horizonLock = 1.0f;
 
     // force dt resync next frame
     g_cam.timeValid = false;
 
-    g_cam.wasFirstPerson = false;
     g_cam.viewYawValid = false;
-
-    g_cam.upSign = -1; // MW tends to want -Z in your build
-    g_cam.upSignValid = false;
 }
 
 // ==========================================================
@@ -151,49 +140,6 @@ static void ApplyRollKeepPos(Mat4* V, float rollRad)
     V->m[3][0] = -dot(R2, camPos);
     V->m[3][1] = -dot(U2, camPos);
     V->m[3][2] = -dot(B2, camPos);
-}
-
-
-static float gPrevYaw = 0.0f;
-
-float ComputeYawDelta(const Mat4* V)
-{
-    // MW stores BACK in column 2
-    Vec3 B = v3(V->m[0][2], V->m[1][2], V->m[2][2]);
-
-    // Forward direction in world space
-    Vec3 F = norm(mul(B, -1.0f));
-
-    // IMPORTANT:
-    // MW ground plane = XZ
-    // Y is vertical
-    F.y = 0.0f;
-
-    if (len(F) < 1e-3f)
-        return 0.0f;
-
-    F = norm(F);
-
-    static float prevYaw = 0.0f;
-    static bool hasPrev = false;
-
-    float yaw = atan2f(F.x, F.z);
-
-    if (!hasPrev)
-    {
-        prevYaw = yaw;
-        hasPrev = true;
-        return 0.0f;
-    }
-
-    float dyaw = yaw - prevYaw;
-    prevYaw = yaw;
-
-    // unwrap
-    if (dyaw > PI) dyaw -= 2.0f * PI;
-    if (dyaw < -PI) dyaw += 2.0f * PI;
-
-    return dyaw;
 }
 
 void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
@@ -308,11 +254,13 @@ void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
     // ------------------------------------------------------------
     // ROLL INTENT (UG2 STYLE — CAMERA HEADING BASED)
     // ------------------------------------------------------------
-    float yawDelta = ComputeYawDelta(mat);
-    float yawRate  = yawDelta / dt;
+    float yawRate = g_cam.yawRateFilt;
 
     // lateral force proxy
     float latG = fabsf(yawRate) * g_cam.speedFilt;
+
+    if (fabsf(yawRate) < 0.01f)
+        yawRate = 0.0f;
 
     // UG2 knee
     float g01 = saturate((latG - 2.5f) / (8.0f - 2.5f));
