@@ -68,6 +68,7 @@
         <PostBuildEvent>
             <Command>
                 XCOPY /Y /R "$(TargetPath)" "d:\Games\NFS MW - Vanilla\SCRIPTS\"
+<!--                XCOPY /Y /R "$(TargetPath)" "d:\Games\NFSC Redux\Scripts\"-->
             </Command>
         </PostBuildEvent>
     </ItemDefinitionGroup>
@@ -214,7 +215,12 @@
         <ClInclude Include="..\includes\minhook\src\trampoline.h"/>
         <ClInclude Include="Carbon.h"/>
         <ClInclude Include="Log.h"/>
+        <ClInclude Include="Math.h" />
         <ClInclude Include="MostWanted.h"/>
+        <ClInclude Include="Game.h"/>
+        <ClInclude Include="CarbonCameraManager.h" />
+        <ClInclude Include="MWCameraManager.h" />
+        <ClInclude Include="TimeManager.h" />
     </ItemGroup>
 
     <ItemGroup>
@@ -224,7 +230,6 @@
         <ClCompile Include="..\includes\minhook\src\hook.c"/>
         <ClCompile Include="..\includes\minhook\src\trampoline.c"/>
         <ClCompile Include="dllmain.cpp"/>
-        <ClCompile Include="Game.h"/>
     </ItemGroup>
 
     <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>

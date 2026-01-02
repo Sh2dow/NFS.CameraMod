@@ -1,10 +1,9 @@
 #pragma once
 
-
 #ifdef GAME_MW
-#include "MostWanted.h"
+#include "MWCameraManager.h"
 #endif
 
 #ifdef GAME_CB
-#include "Carbon.h"
+#include "CarbonCameraManager.h"
 #endif

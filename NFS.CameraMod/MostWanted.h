@@ -28,19 +28,20 @@ namespace Game
 	using CreateLookAtFn =
 		int(__cdecl*)(void*, void*, void*, void*);
 	
-	static auto eCreateLookAtMatrix = (int(__cdecl*)(void*, void*, void*, void*))0x006CF0A0;
+	inline CreateLookAtFn eCreateLookAtMatrix =
+		reinterpret_cast<CreateLookAtFn>(0x006CF0A0);
 
 	// CALL site (not used by MinHook, but kept for reference)
 	constexpr uintptr_t HookAddr = 0X0047DCBC;
 
 	// Sim::GetTime (ADDRESS, not float!)
-	constexpr uintptr_t SimGetTimeAddr = 0x0075CF60;
+	constexpr uintptr_t SimGetTimeAddr = 0x006E8DE0;
 
 	// ------------------------------------------------------------
 	// Camera internals (v1.3 EN)
 	// ------------------------------------------------------------
-	constexpr uintptr_t CameraWrapperAddr = 0x00;   // your wrapper start
-	constexpr uintptr_t CreateLookAtAddr  = 0x00;
-	constexpr uintptr_t DisableTiltsAddr  = 0X0047D506;
-	constexpr uintptr_t CameraAnchor_Update  = 0x00;
+	constexpr uintptr_t CameraWrapperAddr = 0x0047DBF6;   // your wrapper start
+	constexpr uintptr_t CreateLookAtAddr  = 0x006CF0A0;
+	constexpr uintptr_t DisableTiltsAddr  = 0x0047D3C0;
+	
 }
