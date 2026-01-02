@@ -53,6 +53,12 @@ struct CameraState
     bool hasUpBase;
 
     bool timeValid;
+    bool viewYawValid;
+    float prevViewYaw;
+    bool wasFirstPerson;
+
+    int upSign; // +1 or -1
+    bool upSignValid;
 } g_cam;
 
 static void init_camera(Vec3* eye)
@@ -60,6 +66,7 @@ static void init_camera(Vec3* eye)
     g_cam.inited = true;
 
     g_cam.prevFrom = *eye;
+    g_cam.prevViewYaw = 0.0f;
 
     // Seed velocity direction safely (no impulses)
     g_cam.velDirFilt = v3(0.0f, 0.0f, 1.0f); // MW forward (XZ)
@@ -74,6 +81,12 @@ static void init_camera(Vec3* eye)
 
     // force dt resync next frame
     g_cam.timeValid = false;
+
+    g_cam.wasFirstPerson = false;
+    g_cam.viewYawValid = false;
+
+    g_cam.upSign = -1; // MW tends to want -Z in your build
+    g_cam.upSignValid = false;
 }
 
 // ==========================================================
@@ -89,57 +102,42 @@ int __fastcall hkCubicUpdate(void* self, void*, float dt)
 // col0 = right, col1 = up, col2 = back (D3D view convention)
 static void ApplyRollKeepPos(Mat4* V, float rollRad)
 {
-    // --- read basis (COLUMNS) ---
-    Vec3 R = v3(V->m[0][0], V->m[1][0], V->m[2][0]); // right
-    Vec3 U = v3(V->m[0][1], V->m[1][1], V->m[2][1]); // up
-    Vec3 B = v3(V->m[0][2], V->m[1][2], V->m[2][2]); // back
+    Vec3 R = v3(V->m[0][0], V->m[1][0], V->m[2][0]);
+    Vec3 U = v3(V->m[0][1], V->m[1][1], V->m[2][1]);
+    Vec3 B = v3(V->m[0][2], V->m[1][2], V->m[2][2]);
 
-    // --- translation ---
-    float Tx = V->m[3][0];  
+    float Tx = V->m[3][0];
     float Ty = V->m[3][1];
     float Tz = V->m[3][2];
 
-    // Recover camera world position
     Vec3 camPos = add(add(mul(R, -Tx), mul(U, -Ty)), mul(B, -Tz));
 
-    // ------------------------------------------------------------
-    // 1) HORIZON LOCK (MW / UG2: Z-up)
-    // ------------------------------------------------------------
-    Vec3 F = norm(mul(B, -1.0f)); // forward
-    // Use whichever world-up points closest to current camera up
-    Vec3 UpWorldPos = v3(0.0f, 0.0f, 1.0f);
-    Vec3 UpWorldNeg = v3(0.0f, 0.0f, -1.0f);
-    Vec3 UpW = (dot(U, UpWorldPos) > dot(U, UpWorldNeg)) ? UpWorldPos : UpWorldNeg;
+    Vec3 F = norm(mul(B, -1.0f));
 
-    // project world up onto plane perpendicular to F
-    Vec3 UpProj = sub(UpW, mul(F, dot(UpW, F)));
-    if (len(UpProj) < 1e-3f)
-        UpProj = U;
-    else
-        UpProj = norm(UpProj);
+    // MW world up (your build): -Z
+    Vec3 UpWorld = v3(0.0f, 0.0f, -1.0f);
 
-    // blend UP toward projected world up
+    Vec3 UpProj = sub(UpWorld, mul(F, dot(UpWorld, F)));
+    if (len(UpProj) > 1e-3f) UpProj = norm(UpProj);
+    else UpProj = U;
+
+    float hLock = clampf(g_cam.horizonLock, 0.65f, 0.95f);
+
     U = norm(add(
-        mul(U, 1.0f - g_cam.horizonLock),
-        mul(UpProj, g_cam.horizonLock)
+        mul(U, 1.0f - hLock),
+        mul(UpProj, hLock)
     ));
 
-    // rebuild orthonormal basis
-    R = norm(cross(U, F));
-    U = norm(cross(F, R));
+    // rebuild basis
+    Vec3 Rn = norm(cross(F, U));
+    Vec3 Un = norm(cross(Rn, F));
 
-    // ------------------------------------------------------------
-    // 2) ROLL AROUND FORWARD AXIS
-    // ------------------------------------------------------------
-    Vec3 R2 = rotate(R, F, rollRad);
-    Vec3 U2 = rotate(U, F, rollRad);
+    // apply roll
+    Vec3 R2 = rotate(Rn, F, rollRad);
+    Vec3 U2 = rotate(Un, F, rollRad);
+    Vec3 B2 = norm(cross(R2, U2));
 
-    Vec3 F2 = norm(cross(R2, U2));
-    Vec3 B2 = mul(F2, -1.0f);
-
-    // ------------------------------------------------------------
-    // 3) WRITE BASIS BACK
-    // ------------------------------------------------------------
+    // write back
     V->m[0][0] = R2.x;
     V->m[1][0] = R2.y;
     V->m[2][0] = R2.z;
@@ -150,32 +148,46 @@ static void ApplyRollKeepPos(Mat4* V, float rollRad)
     V->m[1][2] = B2.y;
     V->m[2][2] = B2.z;
 
-    // ------------------------------------------------------------
-    // 4) KEEP CAMERA POSITION
-    // ------------------------------------------------------------
     V->m[3][0] = -dot(R2, camPos);
     V->m[3][1] = -dot(U2, camPos);
     V->m[3][2] = -dot(B2, camPos);
 }
 
+
 static float gPrevYaw = 0.0f;
 
 float ComputeYawDelta(const Mat4* V)
 {
-    // Forward = -B
+    // MW stores BACK in column 2
     Vec3 B = v3(V->m[0][2], V->m[1][2], V->m[2][2]);
-    Vec3 Fcam = norm(mul(B, -1.0f));
-    Vec3 Fvel = g_cam.velDirFilt; // already XZ
-    Fvel.y = 0.0f;
-    if (len(Fvel) > 1e-3f) Fvel = norm(Fvel);
-    else Fvel = Fcam;
 
-    Vec3 Fax = norm(add(mul(Fcam, 0.7f), mul(Fvel, 0.3f)));
+    // Forward direction in world space
+    Vec3 F = norm(mul(B, -1.0f));
 
+    // IMPORTANT:
+    // MW ground plane = XZ
+    // Y is vertical
+    F.y = 0.0f;
 
-    float yaw = atan2f(Fax.x, Fax.z);
-    float dyaw = yaw - gPrevYaw;
-    gPrevYaw = yaw;
+    if (len(F) < 1e-3f)
+        return 0.0f;
+
+    F = norm(F);
+
+    static float prevYaw = 0.0f;
+    static bool hasPrev = false;
+
+    float yaw = atan2f(F.x, F.z);
+
+    if (!hasPrev)
+    {
+        prevYaw = yaw;
+        hasPrev = true;
+        return 0.0f;
+    }
+
+    float dyaw = yaw - prevYaw;
+    prevYaw = yaw;
 
     // unwrap
     if (dyaw > PI) dyaw -= 2.0f * PI;
@@ -184,41 +196,28 @@ float ComputeYawDelta(const Mat4* V)
     return dyaw;
 }
 
-static float gCamRoll = 0.0f;
-static float gCamRollVel = 0.0f;
-
-void UpdateCameraRoll(float yawDelta, float speed, float dt)
-{
-    const float rollStrength = 2.2f; // UG2-ish
-    const float rollMax = 0.35f; // ~20 degrees
-    const float stiffness = 8.0f; // response
-    const float damping = 2.0f;
-
-    float targetRoll = clampf(yawDelta * speed * rollStrength,
-                              -rollMax, rollMax);
-
-    // critically damped spring
-    float accel = (targetRoll - gCamRoll) * stiffness
-        - gCamRollVel * damping;
-
-    gCamRollVel += accel * dt;
-    gCamRoll += gCamRollVel * dt;
-}
-
 void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
 {
-    // Let MW build the camera fully (director, blends, etc.)
+    // Let MW build camera (director, blends, etc.)
     oCreateLookAt(mat, eye, center, up);
 
+    // Authoritative pass only once per frame
     bool applyRoll = (InterlockedExchange(&gApplyUG2Flag, 0) != 0);
 
+    // Detect 1st person (short look-at distance)
+    Vec3 viewDir = sub(*center, *eye);
+
+    // ------------------------------------------------------------
+    // INIT
+    // ------------------------------------------------------------
     if (!g_cam.inited)
     {
         init_camera(eye);
         return;
     }
+
     // ------------------------------------------------------------
-    // TIME (safe)
+    // TIME
     // ------------------------------------------------------------
     float t = GetTimeSeconds_Safe();
 
@@ -227,6 +226,7 @@ void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
         g_cam.lastT = t;
         g_cam.timeValid = true;
         g_cam.prevFrom = *eye;
+        g_cam.viewYawValid = false;
         return;
     }
 
@@ -234,66 +234,63 @@ void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
     g_cam.lastT = t;
 
     if (rawDt <= 0.0f || rawDt > 0.5f)
+    {
+        g_cam.viewYawValid = false;
         return;
+    }
 
     float dt = clampf(rawDt, 1.0f / 240.0f, 1.0f / 30.0f);
 
     // ------------------------------------------------------------
-    // 1) CAMERA-DERIVED VELOCITY (MW: XZ plane)
+    // CAMERA POSITION / HARD CUT DETECTION
     // ------------------------------------------------------------
     Vec3 fromNow = *eye;
-
-    // HARD CUT DETECTION (must be before prevFrom overwrite)
     Vec3 delta = sub(fromNow, g_cam.prevFrom);
     float cutDist = len(delta);
 
-    // Tune threshold to your units (start with 30..80)
-    if (cutDist > 60.0f)
+    if (cutDist > 60.0f) // camera cut / teleport
     {
-        // Reset dynamic state on cuts (prevents snaps)
-        g_cam.velDirFilt = v3(0.0f, 0.0f, 1.0f);
+        g_cam.prevFrom = fromNow;
+        g_cam.velDirFilt = v3(0, 0, 1);
         g_cam.prevVelDirFilt = g_cam.velDirFilt;
+        g_cam.speedFilt = 0.0f;
         g_cam.yawRateFilt = 0.0f;
         g_cam.rollBias = 0.0f;
-
-        // Important: resync position and exit this frame (no dt-based spike)
-        g_cam.prevFrom = fromNow;
+        g_cam.rollTargetFilt = 0.0f;
+        g_cam.viewYawValid = false;
         return;
     }
 
-    // Use delta as velocity step
-    Vec3 vel = delta;
     g_cam.prevFrom = fromNow;
 
-    float speed = len(vel) / dt;
+    // ------------------------------------------------------------
+    // SPEED + VELOCITY DIRECTION (XZ PLANE)
+    // ------------------------------------------------------------
+    float speed = len(delta) / dt;
 
-    Vec3 vdir = vel;
+    Vec3 vdir = delta;
     vdir.y = 0.0f;
-
-    float vdirLen = len(vdir);
+    float vlen = len(vdir);
 
     float dirResp = 1.0f - expf(-10.0f * dt);
     float speedResp = 1.0f - expf(-6.0f * dt);
 
-    if (vdirLen > 1e-3f && speed > 1e-2f)
+    if (vlen > 1e-3f && speed > 1e-2f)
     {
-        vdir = mul(vdir, 1.0f / vdirLen);
+        vdir = mul(vdir, 1.0f / vlen);
 
-        g_cam.velDirFilt = norm(add(mul(g_cam.velDirFilt, 1.0f - dirResp),
-                                    mul(vdir, dirResp)));
+        g_cam.velDirFilt = norm(add(
+            mul(g_cam.velDirFilt, 1.0f - dirResp),
+            mul(vdir, dirResp)));
 
         g_cam.speedFilt += (speed - g_cam.speedFilt) * speedResp;
 
         Vec3 prevF = g_cam.prevVelDirFilt;
         Vec3 curF = g_cam.velDirFilt;
-
-        if (len(prevF) < 0.5f)
-            prevF = curF;
+        g_cam.prevVelDirFilt = curF;
 
         float yawS = (prevF.x * curF.z - prevF.z * curF.x);
         float yawRateRaw = yawS / dt;
-
-        g_cam.prevVelDirFilt = curF;
 
         float yawResp = 1.0f - expf(-8.0f * dt);
         g_cam.yawRateFilt += (yawRateRaw - g_cam.yawRateFilt) * yawResp;
@@ -302,71 +299,61 @@ void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
     {
         g_cam.yawRateFilt += (0.0f - g_cam.yawRateFilt) * speedResp;
         g_cam.speedFilt += (0.0f - g_cam.speedFilt) * speedResp;
-        g_cam.prevVelDirFilt = g_cam.velDirFilt;
     }
 
-    // kill tiny oscillations (UG2 deadzone)
-    const float yawDead = 0.015f; // rad/s-ish, tune 0.01..0.03
-    if (fabsf(g_cam.yawRateFilt) < yawDead)
+    // Deadzone
+    if (fabsf(g_cam.yawRateFilt) < 0.015f)
         g_cam.yawRateFilt = 0.0f;
 
     // ------------------------------------------------------------
-    // 3) UG2-ACCURATE ROLL INTENT
+    // ROLL INTENT (UG2 STYLE — CAMERA HEADING BASED)
     // ------------------------------------------------------------
+    float yawDelta = ComputeYawDelta(mat);
+    float yawRate  = yawDelta / dt;
 
-    // Lateral-G proxy
-    float latG = fabsf(g_cam.yawRateFilt) * g_cam.speedFilt;
+    // lateral force proxy
+    float latG = fabsf(yawRate) * g_cam.speedFilt;
 
-    // MW camera-derived scale usually needs lower knee:
-    const float G0 = 2.5f;
-    const float G1 = 8.0f;
-
-    float g01 = saturate((latG - G0) / (G1 - G0));
+    // UG2 knee
+    float g01 = saturate((latG - 2.5f) / (8.0f - 2.5f));
     g01 = g01 * g01 * (3.0f - 2.0f * g01);
 
-    // roll target
-    float rollTarget = signf(-g_cam.yawRateFilt) * g01 * DEG2RAD(8.5f);
+    // roll target (lean INTO the turn)
+    float rollTarget =
+        signf(-yawRate) *
+        g01 *
+        DEG2RAD(8.5f);
 
-    // filter command (UG2 smoothness)
+    // ------------------------------------------------------------
+    // FILTER + RATE LIMIT (UNCHANGED)
+    // ------------------------------------------------------------
     float cmdResp = 1.0f - expf(-12.0f * dt);
     g_cam.rollTargetFilt += (rollTarget - g_cam.rollTargetFilt) * cmdResp;
     rollTarget = g_cam.rollTargetFilt;
 
-    // rate limit command
-    const float maxRateIn  = DEG2RAD(90.0f);
-    const float maxRateOut = DEG2RAD(60.0f);
-    float maxRate = (fabsf(rollTarget) > fabsf(g_cam.rollBias)) ? maxRateIn : maxRateOut;
-
-    float maxStep = maxRate * dt;
-    float diff = rollTarget - g_cam.rollBias;
-    diff = clampf(diff, -maxStep, +maxStep);
+    float maxStep = DEG2RAD(90.0f) * dt;
+    float diff = clampf(rollTarget - g_cam.rollBias, -maxStep, +maxStep);
     rollTarget = g_cam.rollBias + diff;
 
-    // asymmetric response (you already had)
-    float kIn = 10.0f;
-    float kOut = 4.0f;
-    float k = (fabsf(rollTarget) > fabsf(g_cam.rollBias)) ? kIn : kOut;
+    float k = (fabsf(rollTarget) > fabsf(g_cam.rollBias)) ? 10.0f : 4.0f;
+    g_cam.rollBias += (rollTarget - g_cam.rollBias) *
+                      (1.0f - expf(-k * dt));
 
-    if (!applyRoll)
-        g_cam.rollBias += (0.0f - g_cam.rollBias) * (1.0f - expf(-3.0f * dt));
-    else
-        g_cam.rollBias += (rollTarget - g_cam.rollBias) * (1.0f - expf(-k * dt));
-
-    // horizon lock factor
-    float yaw01 = saturate(fabsf(g_cam.yawRateFilt) / 0.12f);
+    // ------------------------------------------------------------
+    // HORIZON LOCK (USE SAME YAW SOURCE)
+    // ------------------------------------------------------------
+    float yaw01   = saturate(fabsf(yawRate) / 0.12f);
     float speed01 = saturate(g_cam.speedFilt / 38.0f);
 
-    float targetLock = 0.95f - 0.35f * yaw01 + 0.10f * speed01;
-    targetLock = clampf(targetLock, 0.55f, 0.98f);
-    g_cam.horizonLock += (targetLock - g_cam.horizonLock) * (1.0f - expf(-3.5f * dt));
+    g_cam.horizonLock =
+        clampf(0.95f - 0.35f * yaw01 + 0.10f * speed01,
+               0.55f, 0.98f);
 
     // ------------------------------------------------------------
-    // 4) APPLY ROLL (KEEP POSITION)
+    // APPLY ROLL
     // ------------------------------------------------------------
     if (applyRoll)
-    {
         ApplyRollKeepPos(mat, g_cam.rollBias);
-    }
 }
 
 // ==========================================================
