@@ -296,22 +296,23 @@ void __cdecl hkCreateLookAtMatrix(Mat4* mat, Vec3* eye, Vec3* center, Vec3* up)
     }
 
     // ------------------------------------------------------------
-    // 3) UG2-STYLE ROLL INTENT
+    // 3) UG2-ACCURATE ROLL INTENT
     // ------------------------------------------------------------
     float yawAbs  = fabsf(g_cam.yawRateFilt);
-    float yaw01  = saturate(yawAbs / 0.15f);
-    float speed01 = saturate(g_cam.speedFilt / 45.0f);
+    float yaw01   = saturate(yawAbs / 0.12f);   // UG2 sensitivity
+    float speed01 = saturate(g_cam.speedFilt / 38.0f);
 
-    // UG2/MW hybrid
     float rollTarget =
         signf(-g_cam.yawRateFilt) *
         yaw01 *
         speed01 *
-        DEG2RAD(14.0f);   // MW camera roll amplitude
+        DEG2RAD(8.5f);   // UG2 max roll
+
+    float speedDamp = 1.0f - 0.25f * speed01;
+    rollTarget *= speedDamp;
 
     g_cam.rollBias += (rollTarget - g_cam.rollBias) *
-                      (1.0f - expf(-6.0f * dt));
-
+                      (1.0f - expf(-7.5f * dt));
 
     // ------------------------------------------------------------
     // 4) APPLY ROLL (KEEP POSITION)

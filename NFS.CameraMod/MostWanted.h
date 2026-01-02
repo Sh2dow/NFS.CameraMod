@@ -44,6 +44,4 @@ namespace Game
 	constexpr uintptr_t CreateLookAtAddr  = 0x006CF0A0;
 	constexpr uintptr_t DisableTiltsAddr  = 0x0047D3C0;
 	
-	constexpr uintptr_t SetCameraMatrixAddr  = 0x004700D0;
-	
 }
